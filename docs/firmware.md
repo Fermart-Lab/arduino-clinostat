@@ -1,53 +1,44 @@
 # Firmware behavior
 
-This guide describes [the archived sketch](../Stepperclinostat/Stepperclinostat.ino) as written. Its comments are retained for provenance, including comments that do not match the implementation.
+AccelStepper revision by [JGFermart](https://github.com/JGFermart). The [original sketch and its behavior](original-firmware.md) are preserved separately.
 
-## Parameters
+## Motion modes
 
-| Setting | Default | Meaning in this sketch |
-| --- | --- | --- |
-| `STEPS_PER_REV_1` | `200` | Step count supplied to the first Stepper object |
-| `STEPS_PER_REV_2` | `800` | Step count supplied to the second Stepper object |
-| `DIR_PIN_1`, `PUL_PIN_1` | `6`, `7` | First object’s two control pins; names do not establish an electrical protocol |
-| `DIR_PIN_2`, `PUL_PIN_2` | `8`, `9` | Second object’s two control pins |
-| `speed1` | `60` | RPM argument to `motor1.setSpeed()` |
-| `speed2` | `40` | RPM argument to `motor2.setSpeed()`, despite the degrees-per-minute comment |
-| `dir1` | `0-1`, i.e. `-1` | Constant negative stepping direction for motor 1 |
-| `dir2` | `1` | Initial value; reversed before motor 2’s first step |
-| `angle1`, `angle2` | `0`, `0` | Software counters initialized at reset, not measured positions |
-| Serial rate | `9600` baud | Diagnostic output only |
-| Reversal pause | `1000` ms | Blocks the entire loop at either second-axis endpoint |
+Both axes are serviced on every loop through AccelStepper's `run()` function. Acceleration and deceleration apply to each move.
 
-The [official Stepper implementation](https://github.com/arduino-libraries/Stepper/blob/master/src/Stepper.cpp) defines `setSpeed()` in RPM and implements the two-pin constructor using a four-state phase sequence. It is not a dedicated STEP/DIR pulse generator. `step()` blocks until its requested steps have been issued. These library semantics must be considered when interpreting this sketch’s pin names and speed settings.
+- **Sweep:** alternate between `lowerSteps` and `upperSteps`. An optional endpoint dwell affects only that axis. The default dwell is zero; velocity still reaches zero at each reversal.
+- **Random:** select an initial target at startup, then select new targets on a fixed schedule. If an axis is still moving when a slot arrives, skip that slot and finish its current move. Missed slots do not cause a burst of commands. A target can equal the previous target.
 
-## Loop sequence
+Set `CLINOSTAT_RANDOM_MODE` to `0` for sweep or `1` for random in `Config.h`. To use different modes on the two axes, replace each configuration's `DEFAULT_MODE` with `clinostat::MotionMode::Sweep` or `clinostat::MotionMode::Random`.
 
-Each iteration issues one negative step to motor 1, prints its counter and a hyphen, and increments that counter modulo 200. It then checks motor 2’s counter. At either 0 or `800 / 9` (integer value 88), it reverses motor 2’s direction and waits one second. It issues one step to motor 2, prints its old counter, and finally updates that counter modulo 800.
+Random targets use separate reproducible pseudorandom sequences. The default seeds are 1 and 2. Resetting repeats the sequence for each axis; timing and skipped slots affect when targets are issued. Change the seeds to use different sequences.
 
-Both motors receive one step call per loop. The calls are sequential, and the shared pause and serial output affect both axes. The configured speed arguments therefore do not demonstrate independent frame speeds of 60 and 40 RPM.
+## Configuration
 
-## Second-axis reversal
+Settings are in [Config.h](../Stepperclinostat/Config.h). Values below are examples for this revision, not the published experiment's recorded parameters.
 
-At startup, `angle2 == 0`, so `dir2` changes from +1 to −1 before any second-axis step. The counter then follows:
+| Setting | Axis 1 | Axis 2 | Units / meaning |
+| --- | --- | --- | --- |
+| `stepsPerRevolution` | 200 | 800 | Commanded steps per configured revolution |
+| `lowerSteps` | 0 | 0 | Lower absolute target relative to startup |
+| `upperSteps` | 200 | 89 | Upper absolute target relative to startup |
+| `maximumRpm` | 60 | 40 | Maximum configured RPM |
+| `accelerationStepsPerSecond2` | 200 | 533.3333 | Steps/s² |
+| `endpointDwellMs` | 0 | 0 | Sweep endpoint pause, milliseconds |
+| `randomIntervalMs` | 5000 | 5000 | Random target slots, milliseconds |
 
-```text
-0 → 799 → 798 → ... → 88 → 89 → ... → 799 → 0 → 799 → ...
-    negative direction       positive direction       negative
-```
+Maximum speed is converted to steps/s using `maximumRpm * stepsPerRevolution / 60`, giving 200 and approximately 533.33 steps/s. Short movements may not reach this maximum. In the configured angular model, the default ranges are 360° and 40.05°; physical frame angles depend on microstepping and transmission calibration. Targets do not wrap modulo a revolution.
 
-There are **712 commanded steps per traversal** between the endpoints. In the sketch’s 800-step-per-revolution model, that corresponds to **320.4°**, rather than the shorter 88-step path of **39.6°**. The long traversal repeats; it is not limited to startup. Actual frame travel also depends on the electrical interface, transmission and calibration, none of which are established by these constants alone.
+Startup defines the current position as zero without homing or feedback. Both limits must include zero, be ordered, and lie within −1,000,000 to +1,000,000 steps. Speed, acceleration and steps per revolution must be positive; speed and acceleration must be finite. Timing values must be below 2³¹ milliseconds, and the random interval must be nonzero. Invalid motion settings leave both outputs disabled and print an error.
 
+Choose the electrical interface as described in the [hardware guide](hardware.md). The default is the two-pin phase interface. Motors must be connected through suitable drivers, not directly to Arduino pins.
 
 ## Serial output
 
-Set Serial Monitor to **9600 baud**. The first logical lines are:
+At **9600 baud**, records contain `milliseconds,axis1_steps,axis2_steps`, with signed commanded positions. The nominal record interval is 500 ms. Logging is skipped when the transmit buffer lacks space so that it does not wait for serial transmission.
 
-```text
-0-0
-1-799
-2-798
-3-797
-```
+Positions are software step counts, not encoder measurements. Motion starts after setup; there is no serial start/stop command. Opening a serial connection can reset an UNO and restart the program.
 
-The fields are the two software counters printed before their respective updates. Motor 1’s counter increases while its step direction is negative. Neither field is an encoder reading, and the output contains no timestamps. Opening a serial connection can reset an UNO and restart the sequence.
+## Verification
 
+See [test results and reproduction commands](../tests/README.md). Software checks cover scheduling and target bounds; no motor operation or electrical validation has been performed. Library semantics are documented in the [AccelStepper reference](https://www.airspayce.com/mikem/arduino/AccelStepper/classAccelStepper.html).

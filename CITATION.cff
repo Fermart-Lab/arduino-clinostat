@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "Please cite the associated research paper and identify the repository revision used. The preferred citation below is the paper, not a software release DOI."
+type: software
+title: "Arduino clinostat control"
+authors:
+  - name: "Fermart Lab"
+license: MIT
+keywords:
+  - Arduino
+  - clinostat
+  - stepper motors
+  - biomaterial molding
+preferred-citation:
+  type: article
+  title: "Stronger when wet: Aquatically robust chitinous objects via zero-waste coordination with metal ions"
+  authors:
+    - family-names: "Kompa"
+      given-names: "Akshayakumar"
+    - family-names: "Fernandez"
+      given-names: "Javier G."
+      orcid: "https://orcid.org/0000-0003-2961-6506"
+  journal: "Nature Communications"
+  volume: "17"
+  start: "1397"
+  year: 2026
+  month: 2
+  doi: "10.1038/s41467-026-69037-4"
+  url: "https://www.nature.com/articles/s41467-026-69037-4"

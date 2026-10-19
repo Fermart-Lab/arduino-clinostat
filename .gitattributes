@@ -1,0 +1,4 @@
+# Preserve the exact original sketch bytes in Git.
+*.ino -text
+*.md text eol=lf
+*.cff text eol=lf
